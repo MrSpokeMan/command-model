@@ -3,6 +3,7 @@ import librosa
 from tqdm import tqdm
 
 from command_recognition.config import get_config
+from command_recognition.utils.enums import Commands
 
 from pathlib import Path
 config = get_config()
@@ -22,11 +23,11 @@ class AudioFeatureExtractor:
         
         for speaker_dir in base_path.iterdir():
             if speaker_dir.is_dir():
-                speaker_id = int(speaker_dir.name)
+                speaker_id = int(speaker_dir.name.replace('person_', ''))
                 
                 for command_dir in speaker_dir.iterdir():
                     if command_dir.is_dir():
-                        command_id = int(command_dir.name.replace('command_', ''))
+                        command_id = int(Commands[command_dir.name.upper()].value)
                         
                         for file in command_dir.iterdir():
                             if file.suffix == '.npy':
@@ -34,37 +35,75 @@ class AudioFeatureExtractor:
                                 X_audio.append(audio)
                                 y_commands.append(command_id)
                                 y_speakers.append(speaker_id)
+                            elif file.suffix in config.audio_extensions:
+                                audio, _ = librosa.load(file, sr=16000)
+                                X_audio.append(audio)
+                                y_commands.append(command_id)
+                                y_speakers.append(speaker_id)
         
         return {
-            'X_audio': np.array(X_audio),
-            'y_commands': np.array(y_commands, dtype=np.int32),
+            'X_audio': X_audio,
+            'y_commands': np.array(y_commands, dtype=str),
             'y_speakers': np.array(y_speakers, dtype=np.int32)
         }
         
-    def get_mel_spectrogram(self, audio, target_shape=(64, 99)):
-        """Extract mel-spectrogram for CNN"""
+    def get_spectrogram(self, audio):
+        n_fft = 128
+        target_frames = 64
+        hop_length = int(len(audio) / target_frames)
+        
+        spec = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length, center=False))
+        spec = spec[:64, :64]
+        
+        spec_db = librosa.power_to_db(spec, ref=np.max)
+        spec_norm = (spec_db + 80) / 80
+        spec_norm = np.clip(spec_norm, 0, 1)
+        
+        return spec_norm
+
+    def get_smooth_spectrogram(self, audio):
+        n_fft = 1024
+        target_frames = 64
+        hop_length = int(len(audio) / target_frames)
+        
+        spec = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length, center=False))
+        spec = spec[:512, :]
+        
+        if spec.shape[1] < target_frames:
+            pad_width = target_frames - spec.shape[1]
+            spec = np.pad(spec, ((0, 0), (0, pad_width)), mode='constant')
+        else:
+            spec = spec[:, :target_frames]
+        
+        reshaped_spec = spec.reshape(64, 8, 64)
+        smooth_spec = np.mean(reshaped_spec, axis=1)
+        
+        spec_db = librosa.power_to_db(smooth_spec, ref=np.max)
+        spec_norm = (spec_db + 80) / 80
+        spec_norm = np.clip(spec_norm, 0, 1)
+        
+        return spec_norm
+
+    def get_mel_spectrogram(self, audio):
+        n_fft = 1024
+        n_mels = 64
+        target_frames = 64
+        hop_length = int(len(audio) / target_frames)
+        
         mel_spec = librosa.feature.melspectrogram(
-            y=audio,
-            sr=self.sr,
-            n_mels=self.n_mel,
-            n_fft=512,
-            hop_length=160,
-            fmin=0,
-            fmax=8000
+            y=audio, 
+            sr=self.sr, 
+            n_fft=n_fft, 
+            hop_length=hop_length, 
+            n_mels=n_mels, 
+            center=False
         )
-
+        
+        mel_spec = mel_spec[:, :64]
+        
         mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
-
-        # Normalize to [0, 1]
         mel_spec_norm = (mel_spec_db + 80) / 80
         mel_spec_norm = np.clip(mel_spec_norm, 0, 1)
-        
-        # Pad or truncate to target shape
-        if mel_spec_norm.shape[1] < target_shape[1]:
-            pad_width = ((0, 0), (0, target_shape[1] - mel_spec_norm.shape[1]))
-            mel_spec_norm = np.pad(mel_spec_norm, pad_width, mode='constant')
-        else:
-            mel_spec_norm = mel_spec_norm[:, :target_shape[1]]
         
         return mel_spec_norm
     
@@ -91,10 +130,16 @@ class AudioFeatureExtractor:
         
         X_mel = []
         X_filterbank = []
+        X_smooth = []
+        X_spec = []
         
         for i, audio in tqdm(enumerate(X_audio), total=len(X_audio), desc="Extracting features", unit="sample"):
             mel_spec = self.get_mel_spectrogram(audio)
+            spec_smooth = self.get_smooth_spectrogram(audio)
+            spec = self.get_spectrogram(audio)
             X_mel.append(mel_spec)
+            X_smooth.append(spec_smooth)
+            X_spec.append(spec)
             
             filterbank = self.get_filterbank(audio)
             X_filterbank.append(filterbank)
@@ -103,7 +148,9 @@ class AudioFeatureExtractor:
         
         return {
             'mel_specs': np.array(X_mel),
-            'filterbanks': X_filterbank
+            'filterbanks': X_filterbank,
+            'smooth_specs': np.array(X_smooth),
+            'specs': np.array(X_spec)
         }
         
         
