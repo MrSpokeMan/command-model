@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  voice-recognition:
+    build: .
+    container_name: voice-command-recognition
+    ports:
+      - "7860:7860"
+    environment:
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+    volumes:
+      # Mount dataset for easy model updates without rebuilding
+      - ./dataset:/app/dataset
+    restart: unless-stopped
+    # Uncomment for GPU support (requires NVIDIA Docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

@@ -16,3 +16,7 @@ class Commands(Enum):
     TAK = 13
     WLACZ = 14
     WYLACZ = 15
+    
+class Speakers(Enum):
+    FILIP = 1
+    DZMITRY = 2

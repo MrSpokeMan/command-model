@@ -22,7 +22,7 @@ class AudioFeatureExtractor:
         y_speakers = []
         
         for speaker_dir in base_path.iterdir():
-            if speaker_dir.is_dir():
+            if speaker_dir.is_dir() and speaker_dir.name.startswith('person_'):
                 speaker_id = int(speaker_dir.name.replace('person_', ''))
                 
                 for command_dir in speaker_dir.iterdir():
@@ -53,7 +53,14 @@ class AudioFeatureExtractor:
         hop_length = int(len(audio) / target_frames)
         
         spec = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length, center=False))
-        spec = spec[:64, :64]
+        spec = spec[:64, :]
+        
+        # Ensure exact target shape by padding or truncating
+        if spec.shape[1] < target_frames:
+            pad_width = target_frames - spec.shape[1]
+            spec = np.pad(spec, ((0, 0), (0, pad_width)), mode='constant')
+        else:
+            spec = spec[:, :target_frames]
         
         spec_db = librosa.power_to_db(spec, ref=np.max)
         spec_norm = (spec_db + 80) / 80
@@ -99,7 +106,12 @@ class AudioFeatureExtractor:
             center=False
         )
         
-        mel_spec = mel_spec[:, :64]
+        # Ensure exact target shape by padding or truncating
+        if mel_spec.shape[1] < target_frames:
+            pad_width = target_frames - mel_spec.shape[1]
+            mel_spec = np.pad(mel_spec, ((0, 0), (0, pad_width)), mode='constant')
+        else:
+            mel_spec = mel_spec[:, :target_frames]
         
         mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
         mel_spec_norm = (mel_spec_db + 80) / 80
@@ -145,6 +157,7 @@ class AudioFeatureExtractor:
             X_filterbank.append(filterbank)
         
         print(f"Feature extraction completed")
+        print(X_mel[0].shape)
         
         return {
             'mel_specs': np.array(X_mel),

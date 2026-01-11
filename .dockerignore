@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Training outputs
+*.png
+*.jpg
+*.jpeg
+cnn_training_history.png
+lstm_training_history.png
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# UV
+.uv/
+
+# Misc
+*.bak
+*.tmp
